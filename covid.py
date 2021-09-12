@@ -12,7 +12,7 @@ import tweepy
 def set_options():
     options = WebDriverOptions()
     options.add_argument("--window-size=1440,810")
-    # options.add_argument("--headless")
+    options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--silent")
     options.add_argument("--disable-notifications")
@@ -153,6 +153,8 @@ def main():
     set_fallecidos_totales(df)
     for departamento in DEPARTAMENTOS:
         set_fallecidos_totales(df, departamento)
+    
+    tweet()
 
 
 WORKING_PATH = "D:\pythonCode\Covid"
@@ -220,5 +222,4 @@ MESES_3 = [
     "DIC",
 ]
 
-#main()
-tweet()
+main()
