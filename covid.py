@@ -157,7 +157,7 @@ def main():
     tweet()
 
 
-WORKING_PATH = "D:\pythonCode\Covid"
+WORKING_PATH = "C:\prodCode\Covid"
 GRAPH_PATH = os.path.join(WORKING_PATH, "graficos")
 DOWNLOAD_PATH = r"C:\Users\Gabriel\Downloads"
 if "NOTEST" in sys.argv:
