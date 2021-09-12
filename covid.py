@@ -12,7 +12,7 @@ import tweepy
 def set_options():
     options = WebDriverOptions()
     options.add_argument("--window-size=1440,810")
-    options.add_argument("--headless")
+    #options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--silent")
     options.add_argument("--disable-notifications")
@@ -31,6 +31,7 @@ def download_file():
     )
     driver.get(url)
     while DOWNLOAD_FILE not in os.listdir(DOWNLOAD_PATH):
+        print('Downloading...')
         time.sleep(10)
     driver.quit()
     shutil.copyfile(
