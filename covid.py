@@ -11,8 +11,7 @@ import tweepy
 
 def set_options():
     options = WebDriverOptions()
-    options.add_argument("--window-size=1440,810")
-    #options.add_argument("--headless")
+    options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--silent")
     options.add_argument("--disable-notifications")
@@ -31,7 +30,6 @@ def download_file():
     )
     driver.get(url)
     while DOWNLOAD_FILE not in os.listdir(DOWNLOAD_PATH):
-        print('Downloading...')
         time.sleep(10)
     driver.quit()
     shutil.copyfile(
@@ -50,12 +48,12 @@ def load_and_prepare_data():
     return df
 
 
-def set_fallecidos_totales(df, departamento=None):
+def set_fallecidos_totales(df, departamento=None, bias=0):
     if departamento:
         df = df.loc[lambda i: i["DEPARTAMENTO DOMICILIO"] == departamento]
         filename = departamento + ".jpg"
     else:
-        filename = "peru.jpg"
+        filename = f"peru{str(bias)}.jpg"
     # New dataframe with INDEX, FECHA, CUENTA
     df = pd.DataFrame(
         {
@@ -67,7 +65,7 @@ def set_fallecidos_totales(df, departamento=None):
     cuentas = list(df["CUENTA"])
     df = df[DF_NORMAL:]
     df["CUENTA"] = [
-        mean(cuentas[i : i + DF_NORMAL]) for i, _ in enumerate(df["CUENTA"])
+        mean(cuentas[i : i + DF_NORMAL]) + bias for i, _ in enumerate(df["CUENTA"])
     ]
     # Break dataset into graph for current and last 3 years
     plt.figure(figsize=(15, 6))
@@ -98,7 +96,59 @@ def set_fallecidos_totales(df, departamento=None):
     yaxis_ticks = [i for i in range(0, int(max_y) + 1, jump)]
     yaxis_labels = [f"{i:,}" for i in yaxis_ticks]
     graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento)
+    return filename
 
+def set_fallecidos_mensuales(df, departamento=None, bias=0):
+    if departamento:
+        df = df.loc[lambda i: i["DEPARTAMENTO DOMICILIO"] == departamento]
+        filename = departamento + ".jpg"
+    else:
+        filename = f"peru{str(bias)}.jpg"
+    # New dataframe with INDEX, FECHA, CUENTA
+    df = pd.DataFrame(
+        {
+            "FECHA": list(pd.unique(df["FECHA"])),
+            "CUENTA": list(df["FECHA"].value_counts().sort_index(axis=0)),
+        }
+    )
+    # List of values, cut start of dataframe in DF_NORMAL, replace CUENTA with rolling average of CUENTA
+    df = df.set_index('FECHA')
+    df = df.resample('M').sum()
+    df.plot.bar(width=0.9)
+    plt.show()
+    print(df)
+    quit()
+
+    # Break dataset into graph for current and last 3 years
+    plt.figure(figsize=(15, 6))
+    current_year = dt.now().year
+    current_month = dt.now().month
+    xaxis_labels, xaxis_ticks = [], []
+    for year in range(current_year - 2, current_year + 1):
+        # define year startpoint and year endpoint
+        year_startpoint, year_endpoint = dt(year, 1, 1), dt(year, 12, 31)
+        # filter records for year
+        dfx = df.loc[lambda i: i["FECHA"] >= year_startpoint].loc[
+            lambda i: i["FECHA"] <= year_endpoint
+        ]
+        # add data series to graph
+        plt.plot(dfx["FECHA"], dfx["CUENTA"])
+        # add x-axis labels for the year
+        m = min(current_month + 2, 13) if year == current_year else 13
+        xaxis_labels += [f"{MESES_3[j-1]}/{str(year)[-2:]}" for j in range(1, m)]
+        xaxis_ticks += [dt(year=year, month=i, day=1) for i in range(1, m)]
+    # add y-axis labels
+    max_y = max(df["CUENTA"])
+    if max_y > 100:
+        max_y *= 1.2
+        jump = 100
+    else:
+        max_y = 100
+        jump = 10
+    yaxis_ticks = [i for i in range(0, int(max_y) + 1, jump)]
+    yaxis_labels = [f"{i:,}" for i in yaxis_ticks]
+    graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento)
+    return filename
 
 def graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento):
     ax = plt.gca()
@@ -124,38 +174,40 @@ def graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, depart
         loc="center",
         pad=10,
     )
-
+    plt.show()
+    '''
     plt.savefig(
         os.path.join(GRAPH_PATH, filename),
         pad_inches=0,
         bbox_inches="tight",
         transparent=True,
     )
+    '''
     plt.close()
 
 
-def tweet():
-    env = os.environ
-    CONSUMER_KEY = env['TWITTER_CONSUMER_KEY']
-    CONSUMER_SECRET = env['TWITTER_CONSUMER_KEY_SECRET']
-    ACCESS_TOKEN = env['TWITTER_ACCESS_TOKEN']
-    ACCESS_SECRET = env['TWITTER_ACCESS_TOKEN_SECRET']
+def tweet(media):
+    CONSUMER_KEY = os.environ['TWITTER_CONSUMER_KEY']
+    CONSUMER_SECRET = os.environ['TWITTER_CONSUMER_KEY_SECRET']
+    ACCESS_TOKEN = os.environ['TWITTER_ACCESS_TOKEN']
+    ACCESS_SECRET = os.environ['TWITTER_ACCESS_TOKEN_SECRET']
     auth = tweepy.OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
     auth.set_access_token(ACCESS_TOKEN, ACCESS_SECRET)
     api = tweepy.API(auth)
-    api.update_with_media(
-        os.path.join(GRAPH_PATH, "peru.jpg"), status="Muertes SINADEF país."
-    )
+    for m in media:
+        api.update_with_media(os.path.join(GRAPH_PATH, m[0]), status=m[1])
 
 
 def main():
-    download_file()
+    #download_file()
     df = load_and_prepare_data()
-    set_fallecidos_totales(df)
-    for departamento in DEPARTAMENTOS:
-        set_fallecidos_totales(df, departamento)
+    # media = [(set_fallecidos_totales(df), "Muertes SINADEF país")]
+    # media.append((set_fallecidos_totales(df, bias=-315), "Muertes COVID país (base=2019)"))
+    set_fallecidos_mensuales(df)
+    #for departamento in DEPARTAMENTOS:
+    #    set_fallecidos_totales(df, departamento)
     
-    tweet()
+    tweet(media)
 
 
 WORKING_PATH = "C:\prodCode\Covid"
