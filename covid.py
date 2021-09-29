@@ -1,4 +1,4 @@
-import os, shutil, sys
+import os, shutil, sys, platform
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as WebDriverOptions
 from datetime import datetime as dt
@@ -11,7 +11,7 @@ import tweepy
 
 def set_options():
     options = WebDriverOptions()
-    options.add_argument("--headless")
+    #options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--silent")
     options.add_argument("--disable-notifications")
@@ -21,7 +21,8 @@ def set_options():
     return options
 
 
-def download_file():
+def download_file(timeout=1800):
+    start_time = dt.now().timestamp()
     if DOWNLOAD_FILE in os.listdir(DOWNLOAD_PATH):
         os.remove(os.path.join(DOWNLOAD_PATH, DOWNLOAD_FILE))
     url = "https://cloud.minsa.gob.pe/s/nqF2irNbFomCLaa/download"
@@ -31,6 +32,10 @@ def download_file():
     driver.get(url)
     while DOWNLOAD_FILE not in os.listdir(DOWNLOAD_PATH):
         time.sleep(10)
+        print(f"Download Time: {dt.now().timestamp() - start_time:.0f} / {timeout} seconds.", end='\r', flush=True)
+        if dt.now().timestamp() - start_time > timeout:
+            driver.quit()
+            raise Exception("Download of Updated Database Failed")
     driver.quit()
     shutil.copyfile(
         os.path.join(DOWNLOAD_PATH, DOWNLOAD_FILE),
@@ -48,7 +53,7 @@ def load_and_prepare_data():
     return df
 
 
-def set_fallecidos_totales(df, departamento=None, bias=0):
+def set_fallecidos_totales(df, title, bias, departamento=None):
     if departamento:
         df = df.loc[lambda i: i["DEPARTAMENTO DOMICILIO"] == departamento]
         filename = departamento + ".jpg"
@@ -95,10 +100,10 @@ def set_fallecidos_totales(df, departamento=None, bias=0):
         jump = 10
     yaxis_ticks = [i for i in range(0, int(max_y) + 1, jump)]
     yaxis_labels = [f"{i:,}" for i in yaxis_ticks]
-    graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento)
+    graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento, title)
     return filename
 
-def set_fallecidos_mensuales(df, departamento=None, bias=0):
+def set_fallecidos_mensuales(df, title, departamento=None, bias=0):
     if departamento:
         df = df.loc[lambda i: i["DEPARTAMENTO DOMICILIO"] == departamento]
         filename = departamento + ".jpg"
@@ -115,9 +120,6 @@ def set_fallecidos_mensuales(df, departamento=None, bias=0):
     df = df.set_index('FECHA')
     df = df.resample('M').sum()
     df.plot.bar(width=0.9)
-    plt.show()
-    print(df)
-    quit()
 
     # Break dataset into graph for current and last 3 years
     plt.figure(figsize=(15, 6))
@@ -147,10 +149,10 @@ def set_fallecidos_mensuales(df, departamento=None, bias=0):
         jump = 10
     yaxis_ticks = [i for i in range(0, int(max_y) + 1, jump)]
     yaxis_labels = [f"{i:,}" for i in yaxis_ticks]
-    graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento)
+    graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento, title)
     return filename
 
-def graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento):
+def graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, departamento, title):
     ax = plt.gca()
     ax.set_facecolor("#F5F1F5")
     ax.spines["bottom"].set_color("#DFD8DF")
@@ -169,20 +171,17 @@ def graph(filename, xaxis_labels, xaxis_ticks, yaxis_labels, yaxis_ticks, depart
         departamento = "PERU"
     plt.title(
         departamento.upper()
-        + "\nMuertes SINADEF al "
+        + "\n" + title + "\n"
         + dt.strftime(dt.now(), f"%d - %m - %y"),
         loc="center",
         pad=10,
     )
-    plt.show()
-    '''
     plt.savefig(
         os.path.join(GRAPH_PATH, filename),
         pad_inches=0,
         bbox_inches="tight",
         transparent=True,
     )
-    '''
     plt.close()
 
 
@@ -199,20 +198,22 @@ def tweet(media):
 
 
 def main():
-    #download_file()
+    download_file()
     df = load_and_prepare_data()
-    # media = [(set_fallecidos_totales(df), "Muertes SINADEF país")]
-    # media.append((set_fallecidos_totales(df, bias=-315), "Muertes COVID país (base=2019)"))
-    set_fallecidos_mensuales(df)
-    #for departamento in DEPARTAMENTOS:
-    #    set_fallecidos_totales(df, departamento)
-    
+    #media = [(set_fallecidos_totales(df, "Muertes SINADEF", bias=0), "Muertes SINADEF a hoy.")]
+    media = []
+    media.append((set_fallecidos_totales(df, "Muertes COVID", bias=-315), "Muertes COVID (base = 2019) a hoy."))
     tweet(media)
 
 
-WORKING_PATH = "C:\prodCode\Covid"
+if platform.node() == 'power':
+    WORKING_PATH = "D:\pythonCode\Covid"
+    DOWNLOAD_PATH = r"C:\Users\Gabriel\Downloads"
+else:
+    WORKING_PATH = "C:\prodCode\Covid"
+    DOWNLOAD_PATH = r"C:\Users\Gabriel\Downloads"
+
 GRAPH_PATH = os.path.join(WORKING_PATH, "graficos")
-DOWNLOAD_PATH = r"C:\Users\Gabriel\Downloads"
 if "NOTEST" in sys.argv:
     DOWNLOAD_FILE = "fallecidos_sinadef.csv"
 else:
